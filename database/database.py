@@ -5,7 +5,8 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 
 #DATABASE_URL = "postgresql+asyncpg://admin:adminpass@localhost:5432/labDB"
-DATABASE_URL = "postgresql+asyncpg://admin:adminpass@localhost:5432/labDB"
+DATABASE_URL = "postgresql+asyncpg://admin:adminpass@localhost:5432/labdb"
+
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 #async_session = sessionmaker(    engine, expire_on_commit=False, class_=AsyncSession)

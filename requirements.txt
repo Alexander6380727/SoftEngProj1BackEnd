@@ -1,2 +1,9 @@
 fastapi
 uvicorn
+sqlalchemy
+asyncpg
+pydantic
+python-multipart
+passlib
+pyjwt
+bcrypt
