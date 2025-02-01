@@ -4,9 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth.authentication import router as auth_router
 from database.register import router as register_router
 from auth.dashboard import router as dashboard_router
+from booking.booking import router as booking_router
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.database import engine, get_db
-from database.models import Base, User
+from database.models import Base, User, Room
 from passlib.context import CryptContext
 from sqlalchemy.future import select
 import bcrypt
@@ -16,6 +17,9 @@ app = FastAPI()
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(register_router, prefix="/register", tags=["Register"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
+
+app.include_router(booking_router, prefix="/api", tags=["Booking"])
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,12 +33,30 @@ app.add_middleware(
 async def root():
     return {"message": "Welcome to the FastAPI backend"}
 
+async def seed_rooms(db: AsyncSession):
+    # Check if any rooms already exist.
+    existing_rooms_result = await db.execute(select(Room))  # Await query execution
+    existing_rooms = existing_rooms_result.scalars().all()  # Extract scalar ORM results
+
+    # If no existing rooms, add default rooms.
+    if not existing_rooms:
+        rooms = [
+            Room(name="Room A"),
+            Room(name="Room B"),
+            Room(name="Room C"),
+        ]
+        db.add_all(rooms)
+        await db.commit()  # Await commit for async operation
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)  # Drops existing schema
         await conn.run_sync(Base.metadata.create_all)  # Creates updated schema
     async with AsyncSession(engine) as session:
         await add_default_users(session)
+        await seed_rooms(session)
+
 
 async def add_default_users(db: AsyncSession):
     # Hash passwords for admin and user roles
