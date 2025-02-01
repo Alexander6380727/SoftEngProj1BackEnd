@@ -4,7 +4,9 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-DATABASE_URL = "postgresql+asyncpg://admin:adminpass@localhost:5432/labDB"
+# DATABASE_URL = "postgresql+asyncpg://admin:adminpass@localhost:5432/labDB"
+
+DATABASE_URL = "postgresql+asyncpg://admin:adminpass@localhost:5432/labdb"  # swan's testing db
 
 
 engine = create_async_engine(DATABASE_URL, echo=True)
