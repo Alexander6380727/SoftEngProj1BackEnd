@@ -1,0 +1,12 @@
+*.pyc
+*.pyc
+*.pyc
+__pycache__/main.cpython-312.pyc
+auth/__pycache__/__init__.cpython-312.pyc
+auth/__pycache__/authentication.cpython-312.pyc
+auth/__pycache__/dashboard.cpython-312.pyc
+booking/__pycache__/booking.cpython-312.pyc
+database/__pycache__/__init__.cpython-312.pyc
+database/__pycache__/database.cpython-312.pyc
+database/__pycache__/models.cpython-312.pyc
+database/__pycache__/register.cpython-312.pyc

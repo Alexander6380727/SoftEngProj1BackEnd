@@ -25,7 +25,8 @@ async def get_dashboard_items(token: str, db: AsyncSession = Depends(get_db)):
                 {"name": "Register User", "route": "/register", "icon": "user-plus"},
             ]
         elif role == "user":
-            return [{"name": "Book Room", "route": "/book-room", "icon": "calendar"}]
+            return [{"name": "Book Room", "route": "/book-room", "icon": "calendar"},
+                    {"name": "Inventory", "route": "/inventory", "icon": "box"},]
         else:
             raise HTTPException(status_code=403, detail="Role not authorized")
     except jwt.ExpiredSignatureError:

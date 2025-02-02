@@ -5,6 +5,7 @@ from auth.authentication import router as auth_router
 from database.register import router as register_router
 from auth.dashboard import router as dashboard_router
 from booking.booking import router as booking_router
+from inventory import router as inventory_router
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.database import engine, get_db
 from database.models import Base, User, Room
@@ -17,7 +18,7 @@ app = FastAPI()
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(register_router, prefix="/register", tags=["Register"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
-
+app.include_router(inventory_router, prefix="/inventory", tags=["Inventory"])
 app.include_router(booking_router, prefix="/api", tags=["Booking"])
 
 

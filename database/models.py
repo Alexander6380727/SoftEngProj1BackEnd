@@ -16,15 +16,14 @@ class Booking(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'))
-    room_id = Column(Integer, ForeignKey('rooms.id'))  # Add ForeignKey to rooms
+    room_id = Column(Integer, ForeignKey('rooms.id')) 
     booking_date = Column(Date, nullable=False)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
     purpose = Column(String, nullable=False)
 
     user = relationship("User", back_populates="bookings")
-    room = relationship("Room", back_populates="bookings")  # Add relationship with Room
-
+    room = relationship("Room", back_populates="bookings")  
 
 class Equipment(Base):
     __tablename__ = 'equipment'
@@ -38,7 +37,17 @@ class Inventory(Base):
     __tablename__ = 'inventory'
 
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)  
     quantity = Column(Integer, nullable=False)
+    unit = Column(String, nullable=False) 
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "quantity": self.quantity,
+            "unit": self.unit
+        }
 
 class Room(Base):
     __tablename__ = 'rooms'
