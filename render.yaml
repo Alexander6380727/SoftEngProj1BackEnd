@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: backend
+    runtime: docker
+    repo: https://github.com/Alexander6380727/SoftEngProj1BackEnd.git
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+    region: singapore
