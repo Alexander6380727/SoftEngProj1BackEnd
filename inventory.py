@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from database.models import Inventory  # Import your Inventory model
 from database.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +13,9 @@ class InventoryCreate(BaseModel):
     unit: str
 
 class InventoryUpdate(BaseModel):
-    name: str
-    quantity: int
-    unit: str
+    name: str = Field(..., min_length=1, description="Name of the inventory item")
+    quantity: int = Field(..., gt=0, description="Quantity of the inventory item")
+    unit: str = Field(..., min_length=1, description="Unit of the inventory item")
 
 # Fetch all inventory items
 @router.get("/")
