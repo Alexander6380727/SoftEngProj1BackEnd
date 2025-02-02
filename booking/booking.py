@@ -10,6 +10,8 @@ from fastapi import Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.sql import text
+from database.models import User
 from fastapi import status
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -108,109 +110,128 @@ async def get_user_role(request: Request):
 
 @router.get("/room-availability")
 async def get_available_rooms(
-        db: AsyncSession = Depends(get_db), date: str = None, start_time: str = None):
-    if not date or not start_time:
-        raise HTTPException(status_code=400, detail="Both 'date' and 'start_time' query parameters are required.")
+        db: AsyncSession = Depends(get_db),
+        date: str = None,
+        start_time: str = None,
+        end_time: str = None,
+):
     try:
-        from datetime import datetime
+        if not date:
+            raise HTTPException(
+                status_code=400, detail="The 'date' query parameter is required."
+            )
 
         booking_date = datetime.strptime(date, "%Y-%m-%d").date()
-        booking_start_time = datetime.strptime(start_time, "%H:%M").time()
 
-        # Use `await` for executing queries against AsyncSession
-        unavailable_rooms_result = await db.execute(
-            select(BookingModel.room_id).where(
-                BookingModel.booking_date == booking_date,
-                BookingModel.start_time <= booking_start_time,
-                BookingModel.end_time > booking_start_time
-            )
-        )
-        unavailable_rooms = unavailable_rooms_result.scalars().all()
+        room_bookings_query = text("""
+            SELECT r.id AS room_id, 
+                   b.start_time AS booked_start_time, 
+                   b.end_time AS booked_end_time
+            FROM rooms r
+            LEFT JOIN bookings b 
+            ON r.id = b.room_id AND b.booking_date = :booking_date
+        """)
 
-        # Use `await` for another query
-        available_rooms_result = await db.execute(
-            select(Room).where(~Room.id.in_(unavailable_rooms))
+        room_bookings_result = await db.execute(
+            room_bookings_query, {"booking_date": booking_date}
         )
-        available_rooms = available_rooms_result.scalars().all()
+        room_bookings = room_bookings_result.fetchall()
+
+        # Process room availability
+        room_availability = {}
+        for row in room_bookings:
+            room_id = row[0]
+            if room_id not in room_availability:
+                room_availability[room_id] = {"booked_times": [], "available_times": []}
+
+            booked_start_time = row[1]
+            booked_end_time = row[2]
+
+            if booked_start_time and booked_end_time:
+                room_availability[room_id]["booked_times"].append(
+                    (str(booked_start_time), str(booked_end_time))
+                )
+
+        # Compute available times
+        full_day_slots = [f"{str(h).zfill(2)}:00" for h in range(24)]
+        for room_id, room_data in room_availability.items():
+            booked_times = room_data["booked_times"]
+
+            room_data["available_times"] = [
+                time_slot for time_slot in full_day_slots if not any(
+                    booked_start <= time_slot < booked_end
+                    for booked_start, booked_end in booked_times
+                )
+            ]
+
+        return {"room_availability": jsonable_encoder(room_availability)}
 
     except Exception as e:
-        # `rollback` must also be awaited
         await db.rollback()
         print(f"Error in /room-availability: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while retrieving room availability.")
+        raise HTTPException(status_code=500, detail="An error occurred.")
 
-    # Return the response
-    return {"available_rooms": jsonable_encoder(available_rooms)}
 
 @router.post("/book-room")
-async def book_room(
-        booking: Booking,  # Payload sent via request body
-        request: Request,  # Request object to extract headers
-        db: AsyncSession = Depends(get_db)  # Database session
-):
-    """
-    Endpoint to create a booking for the authenticated user without using oauth2_scheme.
-    """
+async def book_room(booking: Booking, db: AsyncSession = Depends(get_db)):
     try:
-        # Extract token from `Authorization` header
-        auth_header = request.headers.get("Authorization")  # Extract Authorization header
-        if not auth_header or not auth_header.startswith("Bearer "):
+        # Step 1: Check for conflicting bookings before creating a new one
+        conflict_query = text("""
+            SELECT 1 FROM bookings
+            WHERE room_id = :room_id
+              AND booking_date = :booking_date
+              AND (
+                  (:start_time BETWEEN start_time AND end_time) OR
+                  (:end_time BETWEEN start_time AND end_time) OR
+                  (start_time BETWEEN :start_time AND :end_time)
+              )
+        """)
+
+        # Execute the query and pass parameters to avoid SQL injection
+        result = await db.execute(conflict_query, {
+            "room_id": booking.room_id,
+            "booking_date": booking.booking_date,
+            "start_time": booking.start_time,
+            "end_time": booking.end_time,
+        })
+
+        # Try to fetch the result
+        conflicting_booking = result.scalar()  # Returns `1` if there is a conflict, otherwise `None`
+
+        if conflicting_booking:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization token is missing or invalid"
+                status_code=400,
+                detail="The room is already booked for the given date and time."
             )
 
-        token = auth_header.split(" ")[1]  # Extract the token (e.g., after 'Bearer ')
-
-        # Decode the JWT token
-        try:
-            payload = jwt.decode(token, SECRET_KEY,
-                                 algorithms=["HS256"])  # Replace "HS256" if using a different algorithm
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
-        except jwt.InvalidTokenError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-        # Extract `user_id` from token payload
-        user_id = payload.get("sub")  # Substitute `sub` with the claim you're using for user identification
-        if not user_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: User ID missing")
-
-        # Check for booking conflicts
-        conflicting_bookings_query = select(BookingModel).where(
-            BookingModel.room_id == booking.room_id,
-            BookingModel.booking_date == booking.booking_date,
-            BookingModel.start_time < booking.end_time,
-            BookingModel.end_time > booking.start_time,
-        )
-        conflicting_bookings_result = await db.execute(conflicting_bookings_query)
-        conflicting_bookings = conflicting_bookings_result.scalars().all()
-
-        if conflicting_bookings:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="The selected time slot is unavailable for the chosen room.",
-            )
-
-        # Create a new booking
+        # Step 2: If no conflict, proceed to create the booking
         new_booking = BookingModel(
-            user_id=int(user_id),  # Use `user_id` from the token
+            user_id=booking.user_id,
             room_id=booking.room_id,
             booking_date=booking.booking_date,
             start_time=booking.start_time,
             end_time=booking.end_time,
             purpose=booking.purpose,
         )
+
+        # Add the new booking and commit the transaction
         db.add(new_booking)
-        await db.commit()  # Commit the changes to the database
+        await db.commit()
+        await db.refresh(new_booking)  # Fetch the new booking data to access `id`
+
         return {"message": "Booking successful.", "booking_id": new_booking.id}
 
+    except HTTPException as http_exc:
+        # Explicitly handle HTTP exceptions
+        raise http_exc
+
     except Exception as e:
-        print(f"Error in booking room: {e}")
-        await db.rollback()
+        print(f"Error in booking room: {e}")  # For debugging purposes
+        await db.rollback()  # Rollback any changes on failure
         raise HTTPException(status_code=500, detail="An error occurred while booking the room.")
 
 @router.get("/admin-bookings")
-async def get_admin_bookings(db: Session = Depends(get_db), user_role: str = Depends(get_user_role)):
+async def get_admin_bookings(db: AsyncSession = Depends(get_db), user_role: str = Depends(get_user_role)):
     """
     Fetch all bookings for the current day.
     """
@@ -219,10 +240,18 @@ async def get_admin_bookings(db: Session = Depends(get_db), user_role: str = Dep
     if user_role != "admin":
         raise HTTPException(status_code=403, detail="Unauthorized access")
 
-    today = date.today()
-    bookings = db.query(BookingModel).filter(BookingModel.booking_date == today).all()
+    try:
+        today = date.today()
+        # Use select() for AsyncSession
+        result = await db.execute(
+            select(BookingModel).where(BookingModel.booking_date == today)
+        )
+        bookings = result.scalars().all()  # Get the list of results
 
-    if not bookings:
-        return {"message": "No bookings found for today", "bookings": []}
+        if not bookings:
+            return {"message": "No bookings found for today", "bookings": []}
 
-    return {"bookings": bookings}
+        return {"bookings": jsonable_encoder(bookings)}
+    except Exception as e:
+        print(f"Error fetching admin bookings: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while retrieving bookings.")

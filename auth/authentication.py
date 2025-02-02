@@ -38,4 +38,4 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     access_token = jwt.encode(token_data, SECRET_KEY, algorithm="HS256")
 
-    return {"access_token": access_token, "role": user.role}
+    return {"access_token": access_token, "role": user.role, "user_id": user.id}
