@@ -23,7 +23,7 @@ app.include_router(booking_router, prefix="/api", tags=["Booking"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "https://frontend.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
